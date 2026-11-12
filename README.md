@@ -47,7 +47,15 @@ The variant can name the tests that cover it. When a tests mod that provides `$.
 
 ## Install
 
-Install the hub and the mod in the same scope:
+The mod needs [Claude Hub (webhub)](https://github.com/jabenb/claude-webhub): install both in the same scope. The scope decides where they run:
+
+| Scope | Runs in | Written to |
+|---|---|---|
+| `user` (global, the default) | every project | `~/.claude/settings.json` |
+| `project` | this repository, for everyone who clones it | `<project>/.claude/settings.json` |
+| `local` | this repository, only for you | `<project>/.claude/settings.local.json` |
+
+### Globally
 
 ```bash
 claude plugin install webhub --marketplace jabenb/claude-webhub
@@ -57,9 +65,27 @@ claude plugin install webhub --marketplace jabenb/claude-webhub
 claude plugin install variants --marketplace jabenb/claude-variants
 ```
 
-For one project, run both from the project's folder with `--scope project` (or `--scope local`).
+At the prompt of a Claude Code session the same works as `/plugin install variants --marketplace jabenb/claude-variants`.
+
+### For one project
+
+Run from the project's folder, with `--scope project` (or `--scope local` to keep it out of the files others see):
+
+```bash
+cd ~/path/to/project
+```
+
+```bash
+claude plugin install webhub --marketplace jabenb/claude-webhub --scope project
+```
+
+```bash
+claude plugin install variants --marketplace jabenb/claude-variants --scope project
+```
 
 ### From a local copy
+
+To run a clone, or your own changes, without GitHub, add the folder as a marketplace and install from it (any scope above):
 
 ```bash
 git clone git@github.com:jabenb/claude-variants.git ~/claude-variants
@@ -69,15 +95,27 @@ git clone git@github.com:jabenb/claude-variants.git ~/claude-variants
 claude plugin marketplace add ~/claude-variants
 ```
 
+Globally:
+
 ```bash
 claude plugin install variants@claude-variants
 ```
 
-While working on the mod itself, load it straight from the folder, next to the hub's folder:
+Or for one project, from its folder:
+
+```bash
+claude plugin install variants@claude-variants --scope project
+```
+
+The hub is installed the same way from its own clone (`claude plugin marketplace add ~/claude-webhub`, then `claude plugin install webhub@claude-webhub`), or from GitHub as above.
+
+While working on the mod itself, load it straight from the folder for one session instead, next to the hub's folder; changes reload when a turn ends:
 
 ```bash
 claude --plugin-dir ~/claude-webhub --plugin-dir ~/claude-variants
 ```
+
+Or for every session: add the folder to `CLAUDE_CODE_PLUGIN_DIRS` (paths joined with `:`) in the `env` of `~/.claude/settings.json`. Do not keep a folder-loaded copy and an installed one at once, or the mod loads twice.
 
 ### Updating
 

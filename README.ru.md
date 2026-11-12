@@ -47,7 +47,15 @@
 
 ## Установка
 
-Хаб и мод ставятся в одном scope:
+Моду нужен [Claude Hub (webhub)](https://github.com/jabenb/claude-webhub): ставьте оба в одном scope. Scope определяет, где они работают:
+
+| Scope | Где работает | Куда записывается |
+|---|---|---|
+| `user` (глобально, по умолчанию) | во всех проектах | `~/.claude/settings.json` |
+| `project` | в этом репозитории, у всех, кто его клонирует | `<проект>/.claude/settings.json` |
+| `local` | в этом репозитории, только у вас | `<проект>/.claude/settings.local.json` |
+
+### Глобально
 
 ```bash
 claude plugin install webhub --marketplace jabenb/claude-webhub
@@ -57,9 +65,27 @@ claude plugin install webhub --marketplace jabenb/claude-webhub
 claude plugin install variants --marketplace jabenb/claude-variants
 ```
 
-Для одного проекта запустите обе команды из папки проекта с `--scope project` (или `--scope local`).
+В строке ввода сессии Claude Code то же самое: `/plugin install variants --marketplace jabenb/claude-variants`.
+
+### Для одного проекта
+
+Запускайте из папки проекта с `--scope project` (или `--scope local`, чтобы настройка не попала в файлы, которые видят другие):
+
+```bash
+cd ~/path/to/project
+```
+
+```bash
+claude plugin install webhub --marketplace jabenb/claude-webhub --scope project
+```
+
+```bash
+claude plugin install variants --marketplace jabenb/claude-variants --scope project
+```
 
 ### Из локальной копии
+
+Чтобы запустить клон или свои изменения без GitHub, добавьте папку как маркетплейс и поставьте из неё (в любом scope выше):
 
 ```bash
 git clone git@github.com:jabenb/claude-variants.git ~/claude-variants
@@ -69,15 +95,27 @@ git clone git@github.com:jabenb/claude-variants.git ~/claude-variants
 claude plugin marketplace add ~/claude-variants
 ```
 
+Глобально:
+
 ```bash
 claude plugin install variants@claude-variants
 ```
 
-Во время работы над самим модом загружайте его прямо из папки, рядом с папкой хаба:
+Или для одного проекта, из его папки:
+
+```bash
+claude plugin install variants@claude-variants --scope project
+```
+
+Хаб ставится так же из своего клона (`claude plugin marketplace add ~/claude-webhub`, затем `claude plugin install webhub@claude-webhub`) или с GitHub, как выше.
+
+Во время работы над самим модом загружайте его прямо из папки на одну сессию, рядом с папкой хаба; изменения подхватываются по окончании хода:
 
 ```bash
 claude --plugin-dir ~/claude-webhub --plugin-dir ~/claude-variants
 ```
+
+Или для всех сессий: добавьте папку в `CLAUDE_CODE_PLUGIN_DIRS` (пути через `:`) в `env` файла `~/.claude/settings.json`. Не держите одновременно копию из папки и установленную, иначе мод загрузится дважды.
 
 ### Обновление
 
