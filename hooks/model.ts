@@ -1,4 +1,4 @@
-import type { ChatMessage, Code, Edit, FileCode, FileRef, FileStatus, Lang, PageMessage, State, Task, Variant } from '../types'
+import type { ChatMessage, Code, Edit, FileCode, FileRef, FileStatus, Lang, PageMessage, Sketch, State, Task, Variant } from '../types'
 
 export const MOD = 'variants'
 export const PROPOSE_TOOL = 'propose'
@@ -16,6 +16,8 @@ export const ANSWER_CHARS = 6000
 const DIFF_CELLS = 4_000_000
 
 export const EMPTY_CODE: Code = { status: 'none', error: '', after: {}, counts: {}, via: '', tries: 0 }
+
+export const EMPTY_SKETCH: Sketch = { status: 'none', error: '', files: {}, tries: 0 }
 
 export const EMPTY: State = {
   v: 1,
@@ -45,7 +47,15 @@ const VARIANT_PROPS = {
   cons: { type: 'array', items: { type: 'string' } },
   files: {
     type: 'array',
-    items: { type: 'object', properties: { path: { type: 'string', description: 'Relative to the project root' }, status: { type: 'string', enum: ['A', 'M', 'D'] } }, required: ['path', 'status'] },
+    items: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Relative to the project root' },
+        status: { type: 'string', enum: ['A', 'M', 'D'] },
+        what: { type: 'string', description: 'One line: what changes in this file' },
+      },
+      required: ['path', 'status', 'what'],
+    },
   },
   tests: { type: 'array', items: { type: 'string' }, description: 'Test files or filters that cover this variant' },
 } as const
@@ -138,7 +148,7 @@ const parseFiles = (raw: unknown, root: string, errors: string[], where: string)
     const one = rec(item)
     const status = str(one.status).toUpperCase()
 
-    return { path: relPath(root, str(one.path)), status: (status === 'A' || status === 'D' ? status : 'M') as FileStatus }
+    return { path: relPath(root, str(one.path)), status: (status === 'A' || status === 'D' ? status : 'M') as FileStatus, what: str(one.what) }
   })
 
   if (files.length === 0) {
@@ -177,6 +187,7 @@ export const parseVariant = (raw: unknown, root: string, taken: Variant[], error
     tests: strs(input.tests),
     origin: 'claude',
     from: {},
+    sketch: EMPTY_SKETCH,
     code: EMPTY_CODE,
   }
 }
@@ -408,6 +419,7 @@ export const combine = (variants: Variant[], picks: Record<string, string>, base
   }
 
   const files: FileRef[] = []
+  const sketches: Record<string, string> = {}
   const after: Record<string, string> = {}
   const counts: Record<string, { add: number; del: number }> = {}
   const sources = new Set<string>()
@@ -425,6 +437,11 @@ export const combine = (variants: Variant[], picks: Record<string, string>, base
     }
 
     files.push(ref)
+
+    if (source.sketch.files[path] !== undefined) {
+      sketches[path] = source.sketch.files[path]!
+    }
+
     after[path] = source.code.after[path] ?? ''
     counts[path] = countLines(bases[path] ?? '', after[path]!)
     sources.add(key)
@@ -445,6 +462,7 @@ export const combine = (variants: Variant[], picks: Record<string, string>, base
     tests: [...new Set(picked.flatMap(variant => variant.tests))],
     origin: 'combined',
     from: Object.fromEntries(chosen),
+    sketch: Object.keys(sketches).length > 0 ? { ...EMPTY_SKETCH, status: 'ready', files: sketches } : EMPTY_SKETCH,
     code: { status: 'ready', error: '', after, counts, via: 'combine', tries: 0 },
   }
 }
@@ -453,14 +471,20 @@ export const baseName = (path: string): string => path.split('/').pop() ?? path
 
 const list = (items: string[]): string => items.map(item => `- ${item}`).join('\n')
 
-const fileLines = (variant: Variant): string => variant.files.map(file => `${file.path} (${file.status})`).join(', ')
+const fileLines = (variant: Variant): string => variant.files.map(file => `${file.path} (${file.status})${file.what === '' ? '' : `: ${file.what}`}`).join('\n')
+
+const sketchLines = (variant: Variant): string =>
+  Object.entries(variant.sketch.files)
+    .map(([path, text]) => `${path}:\n${text}`)
+    .join('\n\n')
 
 /** What the fork that writes a variant's code is asked. `failed` brings the error of the try before and the files it tripped on. */
 export const codePrompt = (task: Task, variant: Variant, failed: { error: string; files: Record<string, string> } | null): string =>
   [
     `${MARK} Write the code of variant ${variant.key} «${variant.title}» for the task «${task.title}».`,
     `Approach: ${variant.essence}`,
-    `Files: ${fileLines(variant)}`,
+    `Files:\n${fileLines(variant)}`,
+    ...(variant.sketch.status === 'ready' ? [`Follow the sketch shown to the user:\n${sketchLines(variant)}`] : []),
     'Reply with JSON only, no prose and no fences: {"files":[{"path":"…","edits":[{"old":"…","new":"…"}]} | {"path":"…","content":"…"} | {"path":"…","deleted":true}]}.',
     'M files: edits only; each old is text copied exactly from the current file, the shortest that is unique in it. A files: the whole content. Every listed file, no other.',
     ...(failed === null
@@ -470,6 +494,43 @@ export const codePrompt = (task: Task, variant: Variant, failed: { error: string
           ...Object.entries(failed.files).map(([path, text]) => `Current ${path}:\n<<<\n${text}\n>>>`),
         ]),
   ].join('\n')
+
+/** What the fork that sketches a variant is asked: short pseudocode per file, no exact text of the files needed. */
+export const sketchPrompt = (task: Task, variant: Variant, failed: string): string =>
+  [
+    `${MARK} Sketch variant ${variant.key} «${variant.title}» for the task «${task.title}» as short pseudocode, for a person deciding between variants.`,
+    `Approach: ${variant.essence}`,
+    `Files:\n${fileLines(variant)}`,
+    'Per file 3-15 lines: the classes, methods and key logic it adds or changes, in the file\'s language or close to it; … for what stays. No full code.',
+    'Reply with JSON only, no prose and no fences: {"files":[{"path":"…","sketch":"…"}]}, every listed file.',
+    ...(failed === '' ? [] : [`Your previous answer failed: ${failed}. Fix it.`]),
+  ].join('\n')
+
+/** The sketch of every file of a variant; a string says what is wrong. */
+export const parseSketchReply = (text: string, variant: Variant, root: string): Record<string, string> | string => {
+  const parsed = jsonIn(text)
+
+  if (parsed === null) {
+    return 'the reply is not JSON'
+  }
+
+  const items = rec(parsed).files
+  const files: Record<string, string> = {}
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const one = rec(item)
+    const path = relPath(root, str(one.path))
+    const sketch = typeof one.sketch === 'string' ? one.sketch.replace(/\s+$/, '') : ''
+
+    if (variant.files.some(file => file.path === path) && sketch !== '') {
+      files[path] = sketch
+    }
+  }
+
+  const missing = variant.files.filter(file => files[file.path] === undefined).map(file => file.path)
+
+  return missing.length > 0 ? `no sketch for ${missing.join(', ')}` : files
+}
 
 const LANG_NAME: Record<Lang, string> = { en: 'English', ru: 'Russian', uk: 'Ukrainian' }
 
@@ -526,8 +587,9 @@ export const quickPrompt = (state: State, key: string, question: string, refs: s
   const parts = [
     state.task === null ? '' : `Task: ${state.task.title}\n${state.task.summary}`,
     state.variants.map(one => `Variant ${one.key} «${one.title}»: ${one.essence}`).join('\n'),
-    variant === undefined ? '' : `Pros of ${variant.key}:\n${list(variant.pros)}\nCons of ${variant.key}:\n${list(variant.cons)}`,
+    variant === undefined ? '' : `Pros of ${variant.key}:\n${list(variant.pros)}\nCons of ${variant.key}:\n${list(variant.cons)}\nFiles of ${variant.key}:\n${fileLines(variant)}`,
     variant !== undefined && variant.code.status === 'ready' ? `Changes of ${variant.key}:\n${changesOf(variant, state.bases)}` : '',
+    variant !== undefined && variant.code.status !== 'ready' && variant.sketch.status === 'ready' ? `Sketch of ${variant.key}:\n${sketchLines(variant)}` : '',
     refLines(state.variants, state.bases, refs),
     chatTail(state.chat),
   ].filter(part => part !== '')
@@ -619,6 +681,9 @@ export const parseAction = (raw: unknown): PageMessage | null => {
 
   switch (input.type) {
     case 'open':
+    case 'code':
+      return key === '' ? null : { type: 'code', key, lang }
+    case 'sketch':
     case 'regen':
     case 'choose':
       return key === '' ? null : { type: input.type, key, lang }
@@ -654,7 +719,17 @@ export const parseState = (text: string): State | null => {
   try {
     const parsed = JSON.parse(text) as Partial<State>
 
-    return parsed !== null && typeof parsed === 'object' && parsed.v === 1 && Array.isArray(parsed.variants) ? { ...EMPTY, ...parsed, busy: null, queued: 0 } : null
+    if (parsed === null || typeof parsed !== 'object' || parsed.v !== 1 || !Array.isArray(parsed.variants)) {
+      return null
+    }
+
+    const variants = parsed.variants.map(variant => ({
+      ...variant,
+      files: variant.files.map(file => ({ ...file, what: file.what ?? '' })),
+      sketch: variant.sketch ?? EMPTY_SKETCH,
+    }))
+
+    return { ...EMPTY, ...parsed, variants, busy: null, queued: 0 }
   } catch {
     return null
   }

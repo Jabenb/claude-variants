@@ -8,7 +8,8 @@ export type Task = { kind: TaskKind; title: string; summary: string; ref: string
 /** A: the variant adds the file, M: changes it, D: deletes it. */
 export type FileStatus = 'A' | 'M' | 'D'
 
-export type FileRef = { path: string; status: FileStatus }
+/** `what`: one line on what the variant changes in the file. */
+export type FileRef = { path: string; status: FileStatus; what: string }
 
 export type Edit = { old: string; new: string }
 
@@ -29,6 +30,9 @@ export type Code = {
   tries: number
 }
 
+/** A short pseudocode sketch of a variant, per file: cheaper than its code, asked for on the page. */
+export type Sketch = { status: CodeStatus; error: string; files: Record<string, string>; tries: number }
+
 export type Variant = {
   key: string
   title: string
@@ -42,6 +46,7 @@ export type Variant = {
   origin: 'claude' | 'combined'
   /** For a combined variant: which variant each file came from. */
   from: Record<string, string>
+  sketch: Sketch
   code: Code
 }
 
@@ -93,7 +98,8 @@ export type State = {
 
 /** One press on the page, as the mod reads it. */
 export type PageAction =
-  | { type: 'open'; key: string }
+  | { type: 'code'; key: string }
+  | { type: 'sketch'; key: string }
   | { type: 'regen'; key: string }
   | { type: 'choose'; key: string }
   | { type: 'unchoose' }

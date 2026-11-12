@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
 
 import type { State, Variant } from '../types'
-import { EMPTY, EMPTY_CODE, combine, countLines, layCode, parseAction, parseCodeReply, parsePropose, quickPrompt } from '../hooks/model'
+import { EMPTY, EMPTY_CODE, EMPTY_SKETCH, combine, countLines, layCode, parseAction, parseCodeReply, parsePropose, parseSketchReply, parseState, quickPrompt } from '../hooks/model'
 import { PAGE, SHIKI_VERSION } from '../hooks/page/page'
 
 type On = Parameters<TestBody>[1]
@@ -22,8 +22,8 @@ const PROPOSAL = {
   task: { kind: 'bug', title: 'Webhook processed twice', summary: 'Stripe retries `payment_intent.succeeded`.', ref: '#482', steps: ['Stripe sends', 'Retry', 'markPaid twice'] },
   recommended: 'A',
   variants: [
-    { key: 'A', title: 'Unique event id', short: 'Table of processed events', essence: 'Remember event ids.', pros: ['Reliable'], cons: ['Migration'], files: [{ path: CTRL, status: 'M' }, { path: MODEL, status: 'A' }], tests: ['tests/Feature/StripeTest.php'] },
-    { key: 'B', title: 'Idempotent markPaid', short: 'Guard in the service', essence: 'Skip a paid order.', pros: ['Small'], cons: ['Race'], files: [{ path: CTRL, status: 'M' }] },
+    { key: 'A', title: 'Unique event id', short: 'Table of processed events', essence: 'Remember event ids.', pros: ['Reliable'], cons: ['Migration'], files: [{ path: CTRL, status: 'M', what: 'Wrap markPaid in a try on the event id' }, { path: MODEL, status: 'A', what: 'New model' }], tests: ['tests/Feature/StripeTest.php'] },
+    { key: 'B', title: 'Idempotent markPaid', short: 'Guard in the service', essence: 'Skip a paid order.', pros: ['Small'], cons: ['Race'], files: [{ path: CTRL, status: 'M', what: 'Skip a paid order' }] },
   ],
 }
 
@@ -139,8 +139,19 @@ const ready = (key: string, files: Variant['files'], after: Record<string, strin
   tests: [],
   origin: 'claude',
   from: {},
+  sketch: EMPTY_SKETCH,
   code: { ...EMPTY_CODE, status: 'ready', after, counts: {} },
 })
+
+/** Presses "Show code" for a variant and lets the fork answer it. */
+const fetchCode = async (held: World, clock: { advance: (ms: number) => Promise<void> }, key: string, text: string): Promise<void> => {
+  held.presses.push([{ type: 'code', key }])
+  held.forkReplies.push({ isAnswered: true, text })
+  await clock.advance(1000)
+  await clock.advance(1000)
+}
+
+const B_REPLY = JSON.stringify({ files: [{ path: CTRL, edits: [{ old: 'markPaid($order)', new: 'markPaidOnce($order)' }] }] })
 
 const started = async ($: Parameters<TestBody>[0], on: On): Promise<{ held: World; clock: { advance: (ms: number) => Promise<void> } }> => {
   const held = world(on)
@@ -161,7 +172,7 @@ test('a proposal is checked: two variants at least, paths relative to the projec
 })
 
 test('code is laid over the files: an old that is missing or not unique is refused, a new file and a deletion are taken whole', async () => {
-  const variant = { ...ready('A', [{ path: CTRL, status: 'M' }, { path: MODEL, status: 'A' }], {}), code: EMPTY_CODE }
+  const variant = { ...ready('A', [{ path: CTRL, status: 'M', what: '' }, { path: MODEL, status: 'A', what: '' }], {}), code: EMPTY_CODE }
   const files = parseCodeReply(A_REPLY, ROOT)
   expect(Array.isArray(files)).toBe(true)
   const laid = layCode(variant, { [CTRL]: CTRL_TEXT, [MODEL]: '' }, files as never)
@@ -170,7 +181,7 @@ test('code is laid over the files: an old that is missing or not unique is refus
   expect(layCode(variant, { [CTRL]: CTRL_TEXT }, [{ path: CTRL, edits: [{ old: 'nope', new: 'x' }] }, { path: MODEL, content: '' }])).toEqual({ error: `${CTRL}: old is not in the file: "nope"` })
   expect(layCode(variant, { [CTRL]: CTRL_TEXT }, [{ path: CTRL, edits: [{ old: '    ', new: 'x' }] }, { path: MODEL, content: '' }])).toMatchObject({ error: expect.stringContaining('stands 5 times') })
   expect(layCode(variant, { [CTRL]: CTRL_TEXT }, [{ path: CTRL, edits: [] }])).toEqual({ error: `no code for ${MODEL}` })
-  expect(layCode({ ...variant, files: [{ path: CTRL, status: 'D' }] }, { [CTRL]: CTRL_TEXT }, [{ path: CTRL, deleted: true }])).toMatchObject({ after: { [CTRL]: '' }, counts: { [CTRL]: { add: 0, del: 8 } } })
+  expect(layCode({ ...variant, files: [{ path: CTRL, status: 'D', what: '' }] }, { [CTRL]: CTRL_TEXT }, [{ path: CTRL, deleted: true }])).toMatchObject({ after: { [CTRL]: '' }, counts: { [CTRL]: { add: 0, del: 8 } } })
 })
 
 test('a fork\'s reply is read as JSON even inside a fence or prose; anything else says what is wrong', async () => {
@@ -186,7 +197,7 @@ test('lines are counted by a line diff', async () => {
 })
 
 test('a combination takes each file from the picked variant and needs every source\'s code', async () => {
-  const variants = [ready('A', [{ path: CTRL, status: 'M' }, { path: MODEL, status: 'A' }], { [CTRL]: 'a\n', [MODEL]: 'm\n' }), ready('B', [{ path: CTRL, status: 'M' }], { [CTRL]: 'b\n' })]
+  const variants = [ready('A', [{ path: CTRL, status: 'M', what: '' }, { path: MODEL, status: 'A', what: '' }], { [CTRL]: 'a\n', [MODEL]: 'm\n' }), ready('B', [{ path: CTRL, status: 'M', what: '' }], { [CTRL]: 'b\n' })]
   const made = combine(variants, { [CTRL]: 'B', [MODEL]: 'A' }, { [CTRL]: 'x\n' }, 'ru')
   expect(made).toMatchObject({ key: 'C', origin: 'combined', from: { [CTRL]: 'B', [MODEL]: 'A' }, title: 'Сборка: StripeController.php ← B, ProcessedWebhook.php ← A', code: { status: 'ready', after: { [CTRL]: 'b\n', [MODEL]: 'm\n' } } })
   expect(combine([{ ...variants[0]!, code: EMPTY_CODE }, variants[1]!], { [MODEL]: 'A' }, {}, 'en')).toEqual({ error: 'the code of A is not there yet' })
@@ -194,14 +205,15 @@ test('a combination takes each file from the picked variant and needs every sour
 })
 
 test('presses are checked; unknown ones and empty questions are dropped', async () => {
-  expect(parseAction({ type: 'open', key: 'b', lang: 'ru' })).toEqual({ type: 'open', key: 'B', lang: 'ru' })
+  expect(parseAction({ type: 'open', key: 'b', lang: 'ru' })).toEqual({ type: 'code', key: 'B', lang: 'ru' })
+  expect(parseAction({ type: 'sketch', key: 'a' })).toEqual({ type: 'sketch', key: 'A', lang: 'en' })
   expect(parseAction({ type: 'ask', text: ' ', key: 'A' })).toBe(null)
   expect(parseAction({ type: 'own', text: '', code: 'x();\n\n', refs: ['A · x.php:3'] })).toEqual({ type: 'own', text: '', code: 'x();', refs: ['A · x.php:3'], key: '', lang: 'en' })
   expect(parseAction({ type: 'rm -rf' })).toBe(null)
 })
 
 test('a quick question carries only a small context: the task, the variants, the asked one\'s changes and the lines referred to', async () => {
-  const variant = ready('A', [{ path: CTRL, status: 'M' }], { [CTRL]: CTRL_TEXT.replace('markPaid', 'markPaidOnce') })
+  const variant = ready('A', [{ path: CTRL, status: 'M', what: '' }], { [CTRL]: CTRL_TEXT.replace('markPaid', 'markPaidOnce') })
   const prompt = quickPrompt({ ...EMPTY, task: { kind: 'bug', title: 'Twice', summary: 'Retries', ref: '', steps: [] }, variants: [variant], bases: { [CTRL]: CTRL_TEXT } }, 'A', 'Why?', ['A · StripeController.php:6'])
   expect(prompt).toContain('Task: Twice')
   expect(prompt).toContain('-         $this->payments->markPaid($order);')
@@ -216,7 +228,7 @@ test('the page loads Shiki pinned and has no template holes left', async () => {
   expect(PAGE).toContain('"name":"Islands Dark"')
 })
 
-test('variants are shown without code, and the recommended one\'s code is fetched at once by a fork', async ($, on) => {
+test('variants are shown with no code and no fork; the code comes only when asked for', async ($, on) => {
   const { held, clock } = await started($, on)
   expect(held.pages).toBe(1)
   expect(shown(held)).toMatchObject({ project: 'shop', branch: 'fix/stripe', hasTests: false })
@@ -224,36 +236,60 @@ test('variants are shown without code, and the recommended one\'s code is fetche
   const result = await call($, PROPOSE, PROPOSAL)
   expect(String(result.result)).toContain('2 variants are on the Variants page')
   expect(shown(held).bases).toEqual({ [CTRL]: CTRL_TEXT, [MODEL]: '' })
-  expect(one(held, 'A').code.status).toBe('queued')
-  expect(one(held, 'B').code.status).toBe('none')
-
-  held.forkReplies.push({ isAnswered: true, text: A_REPLY })
+  expect(one(held, 'A').code.status).toBe('none')
+  expect(one(held, 'A').files[0]?.what).toBe('Wrap markPaid in a try on the event id')
   await clock.advance(1000)
+  expect(held.forked).toEqual([])
+
+  await fetchCode(held, clock, 'A', A_REPLY)
   expect(held.forked).toHaveLength(1)
   expect(held.forked[0]).toContain('[variants] Write the code of variant A «Unique event id»')
   expect(one(held, 'A').code).toMatchObject({ status: 'ready', via: 'fork', counts: { [CTRL]: { add: 1, del: 0 } } })
   expect(held.submitted).toEqual([])
 })
 
-test('another variant\'s code is fetched only when it is opened', async ($, on) => {
+test('a sketch is short pseudocode by a fork, and the code asked later follows it', async ($, on) => {
   const { held, clock } = await started($, on)
   await call($, PROPOSE, PROPOSAL)
-  held.forkReplies.push({ isAnswered: true, text: A_REPLY })
-  await clock.advance(1000)
 
-  held.presses.push([{ type: 'open', key: 'B' }])
-  held.forkReplies.push({ isAnswered: true, text: JSON.stringify({ files: [{ path: CTRL, edits: [{ old: 'markPaid($order)', new: 'markPaidOnce($order)' }] }] }) })
+  held.presses.push([{ type: 'sketch', key: 'B' }])
+  held.forkReplies.push({ isAnswered: true, text: JSON.stringify({ files: [{ path: CTRL, sketch: 'if ($order->paid) return\n…' }] }) })
   await clock.advance(1000)
   await clock.advance(1000)
-  expect(held.forked).toHaveLength(2)
+  expect(held.forked[0]).toContain('[variants] Sketch variant B «Idempotent markPaid»')
+  expect(held.forked[0]).toContain(`${CTRL} (M): Skip a paid order`)
+  expect(one(held, 'B').sketch).toMatchObject({ status: 'ready', files: { [CTRL]: 'if ($order->paid) return\n…' } })
+  expect(one(held, 'B').code.status).toBe('none')
+
+  await fetchCode(held, clock, 'B', B_REPLY)
+  expect(held.forked[1]).toContain(`Follow the sketch shown to the user:\n${CTRL}:\nif ($order->paid) return`)
   expect(one(held, 'B').code).toMatchObject({ status: 'ready', counts: { [CTRL]: { add: 1, del: 1 } } })
+})
+
+test('a sketch that fails twice is left with its error, and the page may ask again', async ($, on) => {
+  const { held, clock } = await started($, on)
+  await call($, PROPOSE, PROPOSAL)
+  held.presses.push([{ type: 'sketch', key: 'A' }])
+  held.forkReplies.push({ isAnswered: true, text: 'no json' }, { isAnswered: true, text: '{"files":[]}' })
+  await clock.advance(1000)
+  await clock.advance(1000)
+  await clock.advance(1000)
+  expect(held.forked[1]).toContain('Your previous answer failed: the reply is not JSON')
+  expect(one(held, 'A').sketch).toMatchObject({ status: 'error', error: `no sketch for ${CTRL}, ${MODEL}` })
+  expect(held.submitted).toEqual([])
+
+  held.presses.push([{ type: 'sketch', key: 'A' }])
+  await clock.advance(1000)
+  expect(one(held, 'A').sketch.status).not.toBe('error')
 })
 
 test('a fork that fails twice hands the code to the session, which gives it through variant_code', async ($, on) => {
   const { held, clock } = await started($, on)
   await call($, PROPOSE, PROPOSAL)
   const wrong = JSON.stringify({ files: [{ path: CTRL, edits: [{ old: 'nope', new: 'x' }] }, { path: MODEL, content: 'm' }] })
+  held.presses.push([{ type: 'code', key: 'A' }])
   held.forkReplies.push({ isAnswered: true, text: wrong }, { isAnswered: true, text: wrong })
+  await clock.advance(1000)
   await clock.advance(1000)
   await clock.advance(1000)
   expect(held.forked[1]).toContain(`Your previous answer failed: ${CTRL}: old is not in the file`)
@@ -269,8 +305,7 @@ test('a fork that fails twice hands the code to the session, which gives it thro
 test('apply writes the files, tells Claude with the next own message, and refuses a file changed on disk', async ($, on) => {
   const { held, clock } = await started($, on)
   await call($, PROPOSE, PROPOSAL)
-  held.forkReplies.push({ isAnswered: true, text: A_REPLY })
-  await clock.advance(1000)
+  await fetchCode(held, clock, 'A', A_REPLY)
 
   held.files.set(`${ROOT}/${CTRL}`, `${CTRL_TEXT}// edited\n`)
   held.presses.push([{ type: 'apply', key: 'A', runTests: true }])
@@ -293,8 +328,7 @@ test('apply writes the files, tells Claude with the next own message, and refuse
 test('a question is answered from a small context by sonnet; a failed quick answer falls back to a fork', async ($, on) => {
   const { held, clock } = await started($, on)
   await call($, PROPOSE, PROPOSAL)
-  held.forkReplies.push({ isAnswered: true, text: A_REPLY })
-  await clock.advance(1000)
+  await fetchCode(held, clock, 'A', A_REPLY)
 
   held.completeReplies.push({ isAnswered: true, text: 'Because retries.' })
   held.presses.push([{ type: 'ask', text: 'Why a table?', refs: [], key: 'A', deep: false }])
@@ -316,8 +350,7 @@ test('a question is answered from a small context by sonnet; a failed quick answ
 test('my own solution goes through the session, and the answer of that turn comes back to the page', async ($, on) => {
   const { held, clock } = await started($, on)
   await call($, PROPOSE, PROPOSAL)
-  held.forkReplies.push({ isAnswered: true, text: A_REPLY })
-  await clock.advance(1000)
+  await fetchCode(held, clock, 'A', A_REPLY)
 
   held.presses.push([{ type: 'own', text: 'Use a lock', code: 'Cache::lock()', refs: [], key: 'A' }])
   await clock.advance(1000)
@@ -338,7 +371,6 @@ test('my own solution goes through the session, and the answer of that turn come
 test('a message for the session waits while a turn runs and goes when it ends', async ($, on) => {
   const { held, clock } = await started($, on)
   await call($, PROPOSE, PROPOSAL)
-  held.forkReplies.push({ isAnswered: true, text: A_REPLY })
   await $.turn.start({ text: 'working', turnId: 't1' })
 
   held.presses.push([{ type: 'another', constraints: ['Без миграций'], note: '' }])
@@ -368,11 +400,8 @@ test('a variant added by Claude comes without code, or with code that is laid ov
 test('a combination is made on the page with no model, and goes to Claude only when the seams are to be checked', async ($, on) => {
   const { held, clock } = await started($, on)
   await call($, PROPOSE, PROPOSAL)
-  held.forkReplies.push({ isAnswered: true, text: A_REPLY }, { isAnswered: true, text: JSON.stringify({ files: [{ path: CTRL, edits: [{ old: 'markPaid($order)', new: 'markPaidOnce($order)' }] }] }) })
-  await clock.advance(1000)
-  held.presses.push([{ type: 'open', key: 'B' }])
-  await clock.advance(1000)
-  await clock.advance(1000)
+  await fetchCode(held, clock, 'A', A_REPLY)
+  await fetchCode(held, clock, 'B', B_REPLY)
 
   held.presses.push([{ type: 'combine', picks: { [CTRL]: 'B', [MODEL]: 'A' }, note: '', checkSeams: false }])
   await clock.advance(1000)
@@ -382,4 +411,13 @@ test('a combination is made on the page with no model, and goes to Claude only w
   held.presses.push([{ type: 'combine', picks: { [CTRL]: 'A' }, note: 'keep it small', checkSeams: true }])
   await clock.advance(1000)
   expect(held.submitted.at(-1)?.text).toContain(`[variants] Вариант D собран из: ${CTRL} ← A. keep it small`)
+})
+
+test('a sketch reply needs every file of the variant; a saved state from before sketches is read with empty ones', async () => {
+  const variant = { ...ready('A', [{ path: CTRL, status: 'M', what: '' }, { path: MODEL, status: 'A', what: '' }], {}), code: EMPTY_CODE }
+  expect(parseSketchReply(JSON.stringify({ files: [{ path: CTRL, sketch: 'try {…}\n' }, { path: 'other.php', sketch: 'x' }] }), variant, ROOT)).toBe(`no sketch for ${MODEL}`)
+  expect(parseSketchReply(JSON.stringify({ files: [{ path: CTRL, sketch: 'try {…}\n' }, { path: `${ROOT}/${MODEL}`, sketch: 'class M' }] }), variant, ROOT)).toEqual({ [CTRL]: 'try {…}', [MODEL]: 'class M' })
+
+  const old = { ...EMPTY, variants: [{ ...variant, files: [{ path: CTRL, status: 'M' }], sketch: undefined }] }
+  expect(parseState(JSON.stringify(old))?.variants[0]).toMatchObject({ files: [{ path: CTRL, status: 'M', what: '' }], sketch: EMPTY_SKETCH })
 })

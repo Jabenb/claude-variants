@@ -10,7 +10,8 @@ The page is built on [Claude Hub (webhub)](https://github.com/jabenb/claude-webh
 
 - **The task**: bug or feature, the ticket, what is wrong or wanted, and for a bug how it happens step by step.
 - **Variant cards**: one per variant, with the one Claude recommends marked; lines added and removed once its code is in.
-- **A variant in detail**: the approach, pros and cons, the files it touches as badges (`A` new, `M` changed, `D` deleted) with their line counts, and the code.
+- **A variant in detail**: the approach, pros and cons, the files it touches as badges (`A` new, `M` changed, `D` deleted) with a line on what changes in each, and the code block.
+- **Three levels of detail**, each only on a press: the description (always there), a **Sketch** (short pseudocode per file) and **Show code** (the exact diff).
 - **The code**: the diff in one column or side by side, or the whole file with the changes in it (also in one column or side by side), highlighted with Islands Dark. Long unchanged stretches are folded. Click a line number to refer to that line in the chat.
 - **The discussion**: a chat with Claude right on the page.
 
@@ -18,8 +19,10 @@ The page is built on [Claude Hub (webhub)](https://github.com/jabenb/claude-webh
 
 | Action | What happens |
 |---|---|
-| **Choose variant X**, then **Apply** | The mod writes the variant's files itself; no model is involved. If a file changed on disk since the variants were proposed, nothing is written and the page offers to fetch the code again. Claude hears of the applied variant together with your next message. |
-| **Combine** | Pick, file by file, which variant each file comes from. The new variant is put together on the page with no model; a simple check by file names warns when a file relies on a new file of its variant that you did not take. Tick **Check the seams with Claude** to have Claude review and fix the joins. |
+| **Sketch** | Short pseudocode per file: which classes and methods appear and the key logic. Cheap; enough to judge a variant. |
+| **Show code** | The exact diff. Asked only when you press it; the code follows the sketch when there is one. |
+| **Choose variant X**, then **Apply** | Applying needs the code: a chosen variant without it offers **Get the code** first, so you see the diff before anything is written. The mod writes the variant's files itself; no model is involved. If a file changed on disk since the variants were proposed, nothing is written and the page offers to fetch the code again. Claude hears of the applied variant together with your next message. |
+| **Combine** | Pick, file by file, which variant each file comes from. Building asks for the code of the picked variants that have none, then the new variant is put together on the page with no model; a simple check by file names warns when a file relies on a new file of its variant that you did not take. Tick **Check the seams with Claude** to have Claude review and fix the joins. |
 | **Another variant** | Ask Claude for one more variant, with constraints (no migrations, fewest changes, …) and a note. It appears as a new card. |
 | **My solution** | Describe your own solution, paste its code, and Claude judges it against the code; if it is worth it, Claude adds it as a variant. |
 | **Question** | Ask about a variant or a line. |
@@ -28,8 +31,8 @@ The page is built on [Claude Hub (webhub)](https://github.com/jabenb/claude-webh
 
 The mod keeps everything it can away from the model:
 
-- **Variants come without code.** Claude describes them; the code of the recommended variant is fetched right away, the code of the others only when you open them. A variant you never open costs no code at all.
-- **The code is written by a fork** of the session, so it does not show in the chat and reuses the session's cache. Claude gives Edit-style edits (`old → new`), not whole files; the mod checks each edit against the file and builds the result. A reply that does not fit gets one more try with the file's text, then the session writes the code instead.
+- **Variants come without code**, with one line per file on what changes. Nothing is fetched by itself: a sketch or the code is asked only when you press its button. A variant you only read costs no extra tokens.
+- **Sketches and code are written by a fork** of the session, so it does not show in the chat and reuses the session's cache. Claude gives Edit-style edits (`old → new`), not whole files; the mod checks each edit against the file and builds the result. A reply that does not fit gets one more try with the file's text, then the session writes the code instead.
 - **Diffs, line counts, highlighting, combining and applying** are done by the mod and the page.
 - **Questions** go by default to a small context the mod builds (the task, the variants, the changes of the asked one, the lines you refer to, the last lines of the chat), answered by `sonnet` at low effort. **Ask with the whole conversation** under an answer asks a fork of the session instead.
 - Only what needs the code and the tools goes through the session: another variant, your own solution, checking the seams. The answer of that turn comes back to the page's chat. While Claude is busy with a turn, these messages wait and go when it ends.

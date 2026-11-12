@@ -30,10 +30,12 @@ import {
   parseAction,
   parseCodeReply,
   parseFileCodes,
+  parseSketchReply,
   parsePropose,
   parseState,
   parseVariant,
   quickPrompt,
+  sketchPrompt,
   totals,
   words,
 } from './model'
@@ -46,6 +48,8 @@ const PULL_WAIT_MS = 5000
 const PULL_STUCK_MS = PULL_WAIT_MS + 10_000
 /** Two failed forks for one variant's code, then the session writes it. */
 const FORK_TRIES = 2
+/** Two failed forks for a sketch, then it is given up: the code is still there to ask for. */
+const SKETCH_TRIES = 2
 
 const PROPOSE_CALL = new RegExp(`^${PROPOSE}$`)
 const ADD_CALL = new RegExp(`^${ADD}$`)
@@ -237,11 +241,48 @@ const takeCode = ($: EngineInterface, key: string, files: FileCode[], via: Varia
     return error
   })
 
-/** The next queued variant's code, written by a fork; a second failure goes to the session. */
+/** The next queued sketch, written by a fork; a second failure leaves an error with a retry. */
+const sketch = async ($: EngineInterface, variant: Variant): Promise<void> => {
+  const key = variant.key
+  await update($, withVariant(key, one => ({ ...one, sketch: { ...one.sketch, status: 'loading', error: '' } })))
+  let result: Record<string, string> | string
+
+  try {
+    const reply = await $.model.fork({ prompt: sketchPrompt(current.task!, variant, variant.sketch.error) })
+    result = reply.isAnswered ? parseSketchReply(reply.text, variant, root) : `no reply: ${reply.reason}`
+  } catch (thrown) {
+    result = String(thrown)
+  }
+
+  if (typeof result !== 'string') {
+    const files = result
+    await update($, withVariant(key, one => ({ ...one, sketch: { status: 'ready', error: '', files, tries: 0 } })))
+
+    return
+  }
+
+  const tries = variant.sketch.tries + 1
+  const error = result
+  await update($, withVariant(key, one => ({ ...one, sketch: { ...one.sketch, status: tries < SKETCH_TRIES ? 'queued' : 'error', error, tries } })))
+}
+
+const isForking = (): boolean => current.variants.some(one => one.sketch.status === 'loading' || (one.code.status === 'loading' && one.code.via === 'fork'))
+
+/** The next queued sketch or code, one fork at a time; code that fails twice goes to the session. */
 const work = async ($: EngineInterface): Promise<void> => {
+  if (current.task === null || isForking()) {
+    return
+  }
+
+  const sketching = current.variants.find(one => one.sketch.status === 'queued')
+
+  if (sketching !== undefined) {
+    return sketch($, sketching)
+  }
+
   const variant = current.variants.find(one => one.code.status === 'queued')
 
-  if (variant === undefined || current.task === null || current.variants.some(one => one.code.status === 'loading' && one.code.via === 'fork')) {
+  if (variant === undefined) {
     return
   }
 
@@ -302,6 +343,9 @@ const followTests = async ($: EngineInterface): Promise<void> => {
     await update($, state => ({ ...state, testRun: { ...run, state: 'error' } }))
   }
 }
+
+const queueSketch = ($: EngineInterface, key: string): Promise<State> =>
+  update($, withVariant(key, one => (one.sketch.status === 'none' || one.sketch.status === 'error' ? { ...one, sketch: { ...one.sketch, status: 'queued', tries: 0, error: '' } } : one)))
 
 const queueCode = ($: EngineInterface, key: string): Promise<State> =>
   update($, withVariant(key, one => (one.code.status === 'none' || one.code.status === 'error' ? { ...one, code: { ...one.code, status: 'queued', tries: 0, error: '' } } : one)))
@@ -442,8 +486,12 @@ const handle = async ($: EngineInterface, raw: unknown): Promise<void> => {
   const taskTitle = current.task?.title ?? ''
 
   switch (action.type) {
-    case 'open':
+    case 'code':
       await queueCode($, action.key)
+
+      return
+    case 'sketch':
+      await queueSketch($, action.key)
 
       return
     case 'regen':
@@ -549,7 +597,11 @@ const restore = async ($: EngineInterface): Promise<void> => {
     project: baseName(root),
     branch: await git($, ['rev-parse', '--abbrev-ref', 'HEAD']),
     hasTests: await detectTests($),
-    variants: base.variants.map(variant => (variant.code.status === 'loading' ? { ...variant, code: { ...variant.code, status: 'queued', via: '' } } : variant)),
+    variants: base.variants.map(variant => ({
+      ...variant,
+      sketch: variant.sketch.status === 'loading' ? { ...variant.sketch, status: 'queued' } : variant.sketch,
+      code: variant.code.status === 'loading' && variant.code.via === 'fork' ? { ...variant.code, status: 'queued', via: '' } : variant.code,
+    })),
   }
 }
 
@@ -648,13 +700,13 @@ export const register: Register = on => {
       task: parsed.task,
       recommended: parsed.recommended,
       bases,
-      variants: parsed.variants.map(variant => (variant.key === parsed.recommended ? { ...variant, code: { ...variant.code, status: 'queued' } } : variant)),
+      variants: parsed.variants,
     }))
     const isUp = await show($)
 
     return {
       result: isUp
-        ? `${parsed.variants.length} variants are on the Variants page: ${url}. Do not repeat them in chat: one line with the link. The page fetches the code itself.`
+        ? `${parsed.variants.length} variants are on the Variants page: ${url}. Do not repeat them in chat: one line with the link. The page asks for sketches and code itself, when the user wants them.`
         : 'The hub does not answer (is docker running?): the page shows the variants once it is up. Say so in one line.',
     }
   })

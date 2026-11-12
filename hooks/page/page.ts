@@ -156,6 +156,15 @@ code.c{font-family:var(--f-mono);font-size:.88em;background:var(--surface2);padd
 .code .wait{padding:22px 16px;display:flex;flex-direction:column;gap:10px;font-family:var(--f-sans);font-size:13px;color:#A8ABB0}
 .code .wait .ln{height:9px;border-radius:4px;background:#2B2D30}
 .code .err{padding:16px;font-family:var(--f-sans);font-size:13px;color:#F0787D;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.whats{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.whats li{display:flex;gap:10px;align-items:baseline;font-size:13.5px;line-height:1.5}
+.whats .fn{font-family:var(--f-mono);font-size:12px;color:var(--muted);flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.code .pick{padding:22px 16px;display:flex;flex-direction:column;gap:12px;align-items:flex-start;font-family:var(--f-sans);font-size:13px;color:#A8ABB0;max-width:70ch}
+.code .pick .btns{display:flex;flex-wrap:wrap;gap:8px}
+.dbtn{height:32px;border-radius:8px;padding:0 12px;font-family:var(--f-sans);font-size:12.5px;font-weight:550;cursor:pointer;border:1px solid #43454A;background:#2B2D30;color:#DFE1E5;display:inline-flex;align-items:center;gap:7px}
+.dbtn.pri{border-color:#56A8F5;background:rgba(86,168,245,.12);color:#9CCBFA}
+.sk .row .no{color:#4E5157}
+.sknote{padding:6px 14px;background:#1E1F22;border-bottom:1px solid #2B2D30;font-family:var(--f-sans);font-size:11.5px;color:#8C8F96}
 .actions{border-top:1px solid var(--border);padding:12px 20px 14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .ctable{border:1px solid var(--border);border-radius:12px;overflow-x:auto}
 .ctable .in{min-width:560px}
@@ -261,7 +270,11 @@ var TEXTS = {
     hint: { ask: 'Ответ коротко, без чата сессии', own: 'Claude оценит по коду в сессии', alt: 'Claude добавит вариант без кода' },
     send: { ask: 'Спросить', own: 'Обсудить', alt: 'Попросить' }, ownPh: '// Вставьте код или дифф своего решения', remove: 'Убрать',
     emptyTitle: 'Пока нет вариантов', emptyText: 'Попросите Claude в чате: «предложи варианты реализации …». Он покажет их здесь: суть, плюсы и минусы, файлы. Код каждого варианта страница получит сама, когда вы его откроете.',
-    sent: 'Отправлено', noteLbl: 'Заметка'
+    sent: 'Отправлено', noteLbl: 'Заметка',
+    sketchBtn: 'Набросок', codeBtn: 'Показать код', sketchWait: 'Claude набрасывает псевдокод…', sketchError: 'Набросок не получен', retry: 'Ещё раз', sketchTag: 'набросок',
+    sketchNote: 'Псевдокод: суть изменений, не точный код', pickDetail: 'Кода пока нет. Набросок — короткий псевдокод по файлам, это дёшево. Код — точный дифф, его стоит просить, когда вариант интересен.',
+    chosenNoCode: function (k) { return 'Выбран вариант ' + k + '. Перед применением нужен код: получите его и посмотрите дифф.' }, getCode: 'Получить код',
+    buildGet: function (k) { return 'Получить код и собрать ' + k }, seamLater: 'Проверка стыков появится, когда будет код выбранных вариантов.', building: 'Получаем код для сборки…'
   },
   en: {
     title: 'Implementation variants', branch: 'branch', online: 'Connected to the Claude session', offline: 'No session listens', hubDown: 'Hub is down',
@@ -295,7 +308,11 @@ var TEXTS = {
     hint: { ask: 'A short answer, outside the session chat', own: 'Claude judges it against the code', alt: 'Claude adds a variant without code' },
     send: { ask: 'Ask', own: 'Discuss', alt: 'Request' }, ownPh: '// Paste the code or diff of your solution', remove: 'Remove',
     emptyTitle: 'No variants yet', emptyText: 'Ask Claude in the chat: “propose implementation variants for …”. They show up here with their approach, pros, cons and files. The page fetches each variant’s code when you open it.',
-    sent: 'Sent', noteLbl: 'Note'
+    sent: 'Sent', noteLbl: 'Note',
+    sketchBtn: 'Sketch', codeBtn: 'Show code', sketchWait: 'Claude is sketching pseudocode…', sketchError: 'No sketch', retry: 'Try again', sketchTag: 'sketch',
+    sketchNote: 'Pseudocode: the gist of the changes, not exact code', pickDetail: 'No code yet. A sketch is short pseudocode per file and costs little. The code is the exact diff: ask for it when the variant interests you.',
+    chosenNoCode: function (k) { return 'Variant ' + k + ' is chosen. Applying needs its code: get it and look at the diff first.' }, getCode: 'Get the code',
+    buildGet: function (k) { return 'Get the code and build ' + k }, seamLater: 'The seams are checked once the code of the picked variants is in.', building: 'Getting the code to build…'
   },
   uk: {
     title: 'Варіанти рішення', branch: 'гілка', online: 'Підключено до сесії Claude', offline: 'Сесія не слухає', hubDown: 'Хаб недоступний',
@@ -329,7 +346,11 @@ var TEXTS = {
     hint: { ask: 'Коротка відповідь, поза чатом сесії', own: 'Claude оцінить за кодом у сесії', alt: 'Claude додасть варіант без коду' },
     send: { ask: 'Спитати', own: 'Обговорити', alt: 'Попросити' }, ownPh: '// Вставте код або дифф свого рішення', remove: 'Прибрати',
     emptyTitle: 'Поки немає варіантів', emptyText: 'Попросіть Claude у чаті: «запропонуй варіанти реалізації …». Він покаже їх тут: суть, плюси й мінуси, файли. Код кожного варіанта сторінка отримає сама, коли ви його відкриєте.',
-    sent: 'Надіслано', noteLbl: 'Нотатка'
+    sent: 'Надіслано', noteLbl: 'Нотатка',
+    sketchBtn: 'Начерк', codeBtn: 'Показати код', sketchWait: 'Claude робить начерк псевдокодом…', sketchError: 'Начерк не отримано', retry: 'Ще раз', sketchTag: 'начерк',
+    sketchNote: 'Псевдокод: суть змін, не точний код', pickDetail: 'Коду поки немає. Начерк — короткий псевдокод по файлах, це дешево. Код — точний дифф, його варто просити, коли варіант цікавий.',
+    chosenNoCode: function (k) { return 'Обрано варіант ' + k + '. Для застосування потрібен код: отримайте його й перегляньте дифф.' }, getCode: 'Отримати код',
+    buildGet: function (k) { return 'Отримати код і зібрати ' + k }, seamLater: 'Перевірка стиків з’явиться, коли буде код обраних варіантів.', building: 'Отримуємо код для збірки…'
   }
 }
 function pl(n, a, b, c) { var m10 = n % 10, m100 = n % 100; if (m10 === 1 && m100 !== 11) return a; if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return b; return c }
@@ -356,7 +377,7 @@ var ICONS = {
 
 var state = { variants: [], bases: {}, chat: [], task: null, drift: [], news: [] }
 var online = { hub: true, session: true }
-var S = { mode: 'detail', cur: '', files: {}, view: 'diff', layout: 'unified', composer: 'ask', refs: [], alts: [], draft: '', ownCode: '', picks: {}, combNote: '', checkSeams: false, runTests: true, requested: {}, lastChat: 0 }
+var S = { mode: 'detail', cur: '', files: {}, view: 'diff', layout: 'unified', composer: 'ask', refs: [], alts: [], draft: '', ownCode: '', picks: {}, combNote: '', checkSeams: false, runTests: true, show: {}, pendingBuild: null, lastChat: 0 }
 
 function $(id) { return document.getElementById(id) }
 function T() { return TEXTS[hub.lang] || TEXTS.en }
@@ -479,10 +500,13 @@ function highlightText(path, text) {
 function linesHTML(path, text, lines) { var p = painted[paintKey(path, text)]; return p ? p : lines.map(esc) }
 function highlightCurrent() {
   var v = curVariant()
-  if (!v || v.code.status !== 'ready') return
+  if (!v) return
   var path = currentPath(v)
   if (!path) return
-  Promise.all([highlightText(path, state.bases[path] || ''), highlightText(path, v.code.after[path] || '')]).then(function (r) { if (r[0] || r[1]) render() })
+  var jobs = []
+  if (v.code.status === 'ready') jobs.push(highlightText(path, state.bases[path] || ''), highlightText(path, v.code.after[path] || ''))
+  if (v.sketch.status === 'ready' && v.sketch.files[path]) jobs.push(highlightText(path, v.sketch.files[path]))
+  Promise.all(jobs).then(function (r) { if (r.some(Boolean)) render() })
 }
 window.addEventListener('variants:shiki', function () {
   var s = window.variantsShiki
@@ -509,7 +533,7 @@ function variantCards() {
   var t = T(), cur = curVariant()
   var cards = state.variants.map(function (v) {
     var sel = S.mode === 'detail' && cur && v.key === cur.key, tt = totals(v)
-    var nums = v.code.status === 'ready' ? '<span class="add">+' + tt.add + '</span><span class="del">−' + tt.del + '</span><span class="fnt">' + esc(t.files(v.files.length)) + '</span>' : '<span class="fnt">' + esc(t.files(v.files.length)) + ' · ' + esc(t.noCode) + '</span>'
+    var nums = v.code.status === 'ready' ? '<span class="add">+' + tt.add + '</span><span class="del">−' + tt.del + '</span><span class="fnt">' + esc(t.files(v.files.length)) + '</span>' : '<span class="fnt">' + esc(t.files(v.files.length)) + ' · ' + esc(v.sketch.status === 'ready' ? t.sketchTag : t.noCode) + '</span>'
     return '<button type="button" class="vcard" data-key="v-' + esc(v.key) + '" data-act="pick" data-k="' + esc(v.key) + '" aria-pressed="' + sel + '">' +
       '<span style="display:flex;align-items:center;gap:8px;width:100%"><span class="key">' + esc(v.key) + '</span>' +
       (v.key === state.recommended ? '<span class="tag rec">' + esc(t.rec) + '</span>' : '') + (v.origin === 'combined' ? '<span class="tag built">' + esc(t.built) + '</span>' : '') +
@@ -571,24 +595,45 @@ function codeRows(v, path) {
   }
   return '<div class="split"><div><div class="rows">' + left.join('') + '</div></div><div><div class="rows">' + right.join('') + '</div></div></div>'
 }
+function showOf(v) {
+  var want = S.show[v.key]
+  if (want === 'code' && v.code.status !== 'none') return 'code'
+  if (want === 'sketch' && v.sketch.status !== 'none') return 'sketch'
+  return v.code.status !== 'none' ? 'code' : v.sketch.status !== 'none' ? 'sketch' : 'none'
+}
+function waitHTML(label) { return '<div class="wait"><span>' + esc(label) + '</span><span class="ln" style="width:70%"></span><span class="ln" style="width:90%"></span><span class="ln" style="width:55%"></span></div>' }
+function sketchRows(v, path) {
+  var text = v.sketch.files[path] || '', lines = linesOf(text), html = linesHTML(path, text, lines)
+  return '<div class="rows sk">' + lines.map(function (l, i) { return '<div class="row"><span class="no">' + (i + 1) + '</span><span class="mk"></span><span class="tx">' + (html[i] || ' ') + '</span></div>' }).join('') + '</div>'
+}
 function codeBlock(v) {
   var t = T(), path = currentPath(v)
   if (!path) return ''
-  var sp = splitPath(path), c = v.code, cnt = c.counts[path] || null
+  var sp = splitPath(path), c = v.code, sk = v.sketch, cnt = c.counts[path] || null, show = showOf(v)
+  var which = '<div class="iseg" role="group"><button type="button" data-act="show" data-v="sketch" data-k="' + esc(v.key) + '" aria-pressed="' + (show === 'sketch') + '">' + esc(t.sketchBtn) + '</button><button type="button" data-act="show" data-v="code" data-k="' + esc(v.key) + '" aria-pressed="' + (show === 'code') + '">' + esc(t.codeBtn) + '</button></div>'
+  var codeSegs = show === 'code' && c.status === 'ready'
+    ? '<div class="iseg" role="group"><button type="button" data-act="view" data-v="diff" aria-pressed="' + (S.view === 'diff') + '">' + esc(t.diff) + '</button><button type="button" data-act="view" data-v="full" aria-pressed="' + (S.view === 'full') + '">' + esc(t.full) + '</button></div>' +
+      '<div class="iseg" role="group"><button type="button" data-act="layout" data-v="unified" aria-pressed="' + (S.layout === 'unified') + '">' + ICONS.uni + esc(t.unified) + '</button><button type="button" data-act="layout" data-v="split" aria-pressed="' + (S.layout === 'split') + '">' + ICONS.spl + esc(t.split) + '</button></div>'
+    : ''
   var top = '<div class="top">' + ICONS.file + '<span class="path"><span style="color:#7A7E85">' + esc(sp.dir) + '</span><span style="color:#DFE1E5;font-weight:500">' + esc(sp.name) + '</span>' +
-    (cnt ? '  <span style="color:#6AAB73">+' + cnt.add + '</span> <span style="color:#F0787D">−' + cnt.del + '</span>' : '') + '</span>' +
-    '<div class="iseg" role="group"><button type="button" data-act="view" data-v="diff" aria-pressed="' + (S.view === 'diff') + '">' + esc(t.diff) + '</button><button type="button" data-act="view" data-v="full" aria-pressed="' + (S.view === 'full') + '">' + esc(t.full) + '</button></div>' +
-    '<div class="iseg" role="group"><button type="button" data-act="layout" data-v="unified" aria-pressed="' + (S.layout === 'unified') + '">' + ICONS.uni + esc(t.unified) + '</button><button type="button" data-act="layout" data-v="split" aria-pressed="' + (S.layout === 'split') + '">' + ICONS.spl + esc(t.split) + '</button></div></div>'
-  var body
-  if (c.status === 'ready') {
+    (show === 'code' && cnt ? '  <span style="color:#6AAB73">+' + cnt.add + '</span> <span style="color:#F0787D">−' + cnt.del + '</span>' : '') + '</span>' + which + codeSegs + '</div>'
+  var body, foot = t.refHint
+  if (show === 'none') {
+    body = '<div class="pick"><span>' + esc(t.pickDetail) + '</span><span class="btns"><button type="button" class="dbtn" data-act="show" data-v="sketch" data-k="' + esc(v.key) + '">' + esc(t.sketchBtn) + '</button><button type="button" class="dbtn pri" data-act="show" data-v="code" data-k="' + esc(v.key) + '">' + ICONS.code + esc(t.codeBtn) + '</button></span></div>'
+    foot = ''
+  } else if (show === 'sketch') {
+    foot = t.sketchNote
+    body = sk.status === 'ready' ? '<div class="scroll" data-key="sk-' + esc(v.key + path) + '">' + sketchRows(v, path) + '</div>'
+      : sk.status === 'error' ? '<div class="err"><span>' + esc(t.sketchError) + ': ' + esc(sk.error) + '</span><button type="button" class="btn" data-act="show" data-v="sketch" data-k="' + esc(v.key) + '">' + ICONS.again + esc(t.retry) + '</button></div>'
+      : waitHTML(t.sketchWait)
+  } else if (c.status === 'ready') {
     body = (S.layout === 'split' ? '<div class="sides"><div>' + esc(t.before) + '</div><div>' + esc(t.after) + ' · ' + esc(v.key) + '</div></div>' : '') + '<div class="scroll" data-key="scroll-' + esc(v.key + path + S.view + S.layout) + '">' + codeRows(v, path) + '</div>'
   } else if (c.status === 'error') {
     body = '<div class="err"><span>' + esc(t.codeError) + ': ' + esc(c.error) + '</span><button type="button" class="btn" data-act="regen" data-k="' + esc(v.key) + '">' + ICONS.again + esc(t.regen) + '</button></div>'
   } else {
-    var label = c.status === 'queued' ? t.codeQueued : c.via === 'session' ? t.codeWaitSession : t.codeWait
-    body = '<div class="wait"><span>' + esc(label) + '</span><span class="ln" style="width:70%"></span><span class="ln" style="width:90%"></span><span class="ln" style="width:55%"></span></div>'
+    body = waitHTML(c.status === 'queued' ? t.codeQueued : c.via === 'session' ? t.codeWaitSession : t.codeWait)
   }
-  return '<section class="code" aria-label="Code">' + top + body + '<div class="foot"><span>' + esc(t.refHint) + '</span><span style="flex:1 1 auto"></span><span>' + esc(langOf(path).toUpperCase()) + ' · UTF-8 · LF</span></div></section>'
+  return '<section class="code" aria-label="Code">' + top + body + '<div class="foot"><span>' + esc(foot) + '</span><span style="flex:1 1 auto"></span><span>' + esc(langOf(path).toUpperCase()) + ' · UTF-8 · LF</span></div></section>'
 }
 function applyBlock(v) {
   var t = T()
@@ -600,6 +645,10 @@ function applyBlock(v) {
   }
   if (state.selected !== v.key || state.applied) return ''
   var ready = v.code.status === 'ready'
+  if (v.code.status === 'none' || v.code.status === 'error') {
+    return '<div class="banner ok">' + ICONS.okc + '<div class="grow">' + esc(t.chosenNoCode(v.key)) + '</div><button type="button" class="btn flat" data-act="unchoose">' + esc(t.unchoose) + '</button>' +
+      '<button type="button" class="btn pri" data-act="show" data-v="code" data-k="' + esc(v.key) + '">' + ICONS.code + esc(t.getCode) + '</button></div>'
+  }
   var tests = state.hasTests && v.tests.length ? '<label class="chk"><input type="checkbox" data-act="runTests"' + (S.runTests ? ' checked' : '') + '>' + esc(t.runTests) + '</label>' : ''
   return '<div class="banner ok">' + ICONS.okc + '<div class="grow">' + esc(t.chosenText(v.key, state.branch)) + '</div>' + tests +
     '<button type="button" class="btn flat" data-act="unchoose">' + esc(t.unchoose) + '</button>' +
@@ -608,7 +657,6 @@ function applyBlock(v) {
 function detail() {
   var t = T(), v = curVariant()
   if (!v) return ''
-  if (v.code.status === 'none' && !S.requested[v.key]) { S.requested[v.key] = true; send({ type: 'open', key: v.key }) }
   var tt = totals(v), path = currentPath(v)
   var badges = v.files.map(function (f) {
     var sp = splitPath(f.path), cnt = v.code.counts[f.path]
@@ -626,7 +674,8 @@ function detail() {
       '<div class="pc"><section class="pros"><div class="lbl" style="color:var(--ok)">' + esc(t.pros) + '</div><ul>' + v.pros.map(function (p) { return '<li><span class="m add">+</span><span>' + inline(p) + '</span></li>' }).join('') + '</ul></section>' +
       '<section class="cons"><div class="lbl" style="color:var(--hi)">' + esc(t.cons) + '</div><ul>' + v.cons.map(function (p) { return '<li><span class="m del">−</span><span>' + inline(p) + '</span></li>' }).join('') + '</ul></section></div>' +
       '<section style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><div class="lbl">' + esc(t.touched) + '</div>' +
-      '<div class="mono" style="font-size:12px;color:var(--muted)">' + esc(t.files(v.files.length)) + (v.code.status === 'ready' ? ' · <span class="add">+' + tt.add + '</span> <span class="del">−' + tt.del + '</span>' : '') + '</div></div><div class="fbadges">' + badges + '</div></section>' +
+      '<div class="mono" style="font-size:12px;color:var(--muted)">' + esc(t.files(v.files.length)) + (v.code.status === 'ready' ? ' · <span class="add">+' + tt.add + '</span> <span class="del">−' + tt.del + '</span>' : '') + '</div></div><div class="fbadges">' + badges + '</div>' +
+      (v.files.some(function (f) { return f.what }) ? '<ul class="whats">' + v.files.filter(function (f) { return f.what }).map(function (f) { return '<li><span class="fn" title="' + esc(f.path) + '">' + esc(splitPath(f.path).name) + '</span><span>' + inline(f.what) + '</span></li>' }).join('') + '</ul>' : '') + '</section>' +
       codeBlock(v) +
     '</div>' +
     '<div class="actions">' + chooseBtn +
@@ -662,7 +711,7 @@ function combineView() {
   paths.forEach(function (p) { if (pk[p]) { used[pk[p]] = true; count++ } })
   Object.keys(used).forEach(function (k) {
     var v = variant(k)
-    if (v.code.status !== 'ready') { waiting.push(k); if (v.code.status === 'none' && !S.requested[k]) { S.requested[k] = true; send({ type: 'open', key: k }) } return }
+    if (v.code.status !== 'ready') { waiting.push(k); return }
     v.files.forEach(function (f) {
       if (pk[f.path] !== k) return
       if (v.code.counts[f.path]) { add += v.code.counts[f.path].add; del += v.code.counts[f.path].del }
@@ -671,14 +720,14 @@ function combineView() {
     })
   })
   var notes = warnings.map(function (w, i) { return '<div class="note warn" data-key="w' + i + '">' + ICONS.warn + '<span>' + esc(w) + '</span></div>' }).join('') +
-    (waiting.length ? '<div class="note warn" data-key="wait">' + ICONS.warn + '<span>' + esc(t.waitFor(waiting)) + '</span></div>' : !warnings.length && count ? '<div class="note ok" data-key="okn">' + ICONS.okc + '<span><b>' + esc(t.compat) + '</b> ' + esc(t.compatHint) + '</span></div>' : '')
-  var can = count > 0 && !waiting.length
+    (waiting.length ? '<div class="note warn" data-key="wait">' + ICONS.warn + '<span>' + esc(S.pendingBuild ? t.building : t.seamLater) + '</span></div>' : !warnings.length && count ? '<div class="note ok" data-key="okn">' + ICONS.okc + '<span><b>' + esc(t.compat) + '</b> ' + esc(t.compatHint) + '</span></div>' : '')
+  var can = count > 0 && !S.pendingBuild
   return '<article class="detail" data-key="combine"><div class="body" style="gap:18px"><div style="display:flex;flex-direction:column;gap:6px"><h3>' + esc(t.combTitle) + '</h3><p style="margin:0;font-size:14px;color:var(--muted);max-width:70ch">' + esc(t.combText) + '</p></div>' +
     '<div class="ctable"><div class="in"><div class="crow head lbl"><span>' + esc(t.file) + '</span><span>' + esc(t.from) + '</span></div>' + rows + '</div></div>' + notes +
     '<div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;font-size:13px;color:var(--muted)"><span>' + esc(t.result) + ': <b style="color:var(--text);font-weight:600">' + esc(nextKey()) + ' · ' + esc(t.files(count)) + '</b></span><span class="mono" style="font-size:12px"><span class="add">+' + add + '</span> <span class="del">−' + del + '</span></span></div>' +
     '<label style="display:flex;flex-direction:column;gap:6px"><span class="lbl">' + esc(t.combNote) + '</span><textarea class="in" id="combNote" rows="2" placeholder="' + esc(t.combPh) + '">' + esc(S.combNote) + '</textarea></label>' +
     '<label class="chk"><input type="checkbox" data-act="checkSeams"' + (S.checkSeams ? ' checked' : '') + '>' + esc(t.checkSeams) + '</label></div>' +
-    '<div class="actions"><button type="button" class="btn big pri" data-act="build"' + (can ? '' : ' disabled') + '>' + ICONS.merge + esc(t.build(nextKey())) + '</button><button type="button" class="btn big flat" data-act="mode" data-v="detail">' + esc(t.cancel) + '</button></div></article>'
+    '<div class="actions"><button type="button" class="btn big pri" data-act="build"' + (can ? '' : ' disabled') + '>' + ICONS.merge + esc(waiting.length ? t.buildGet(nextKey()) : t.build(nextKey())) + '</button><button type="button" class="btn big flat" data-act="mode" data-v="detail">' + esc(t.cancel) + '</button></div></article>'
 }
 
 function chatPanel() {
@@ -742,11 +791,23 @@ document.addEventListener('click', function (ev) {
     case 'choose': send({ type: 'choose', key: k }); break
     case 'unchoose': send({ type: 'unchoose' }); break
     case 'apply': send({ type: 'apply', key: k, runTests: S.runTests }); el.disabled = true; return
-    case 'regen': delete S.requested[k]; send({ type: 'regen', key: k }); return
+    case 'regen': S.show[k] = 'code'; send({ type: 'regen', key: k }); break
+    case 'show':
+      S.show[k] = v
+      var vv = variant(k)
+      if (vv && v === 'sketch' && (vv.sketch.status === 'none' || vv.sketch.status === 'error')) send({ type: 'sketch', key: k })
+      if (vv && v === 'code' && (vv.code.status === 'none' || vv.code.status === 'error')) send({ type: 'code', key: k })
+      break
     case 'pickFile': S.picks[el.getAttribute('data-p')] = k; break
     case 'runTests': S.runTests = el.checked; return
     case 'checkSeams': S.checkSeams = el.checked; return
-    case 'build': send({ type: 'combine', picks: picks(), note: S.combNote, checkSeams: S.checkSeams }); S.picks = {}; S.combNote = ''; S.mode = 'detail'; S.cur = nextKey(); break
+    case 'build':
+      var pk = picks(), need = {}
+      Object.keys(pk).forEach(function (p) { var src = pk[p] && variant(pk[p]); if (src && src.code.status !== 'ready') need[src.key] = src })
+      S.pendingBuild = { picks: pk, note: S.combNote, checkSeams: S.checkSeams }
+      Object.keys(need).forEach(function (key) { if (need[key].code.status === 'none' || need[key].code.status === 'error') send({ type: 'code', key: key }) })
+      tryBuild()
+      break
     case 'deep':
       var m = state.chat.filter(function (x) { return String(x.id) === el.getAttribute('data-id') })[0]
       if (m) send({ type: 'ask', text: m.question, refs: [], key: m.variant, deep: true })
@@ -776,11 +837,23 @@ function submit() {
   render()
 }
 
+/** A build pressed before every source's code was in goes once it is. */
+function tryBuild() {
+  var b = S.pendingBuild
+  if (!b) return
+  var keys = Object.keys(b.picks).map(function (p) { return b.picks[p] }).filter(Boolean)
+  if (keys.some(function (k) { var v = variant(k); return !v || v.code.status === 'error' })) { S.pendingBuild = null; return }
+  if (keys.some(function (k) { return variant(k).code.status !== 'ready' })) return
+  S.pendingBuild = null
+  send({ type: 'combine', picks: b.picks, note: b.note, checkSeams: b.checkSeams })
+  S.picks = {}; S.combNote = ''; S.mode = 'detail'; S.cur = nextKey()
+}
 hub.onState(function (s) {
   if (!s) return
   var before = state.variants.length
   state = s
   if (s.variants.length > before && before > 0) { S.cur = s.variants[s.variants.length - 1].key; S.mode = 'detail' }
+  tryBuild()
   render()
 })
 hub.onOnline(function (o) { online = o; render() })
