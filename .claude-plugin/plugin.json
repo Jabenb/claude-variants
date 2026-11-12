@@ -1,6 +1,6 @@
 {
   "name": "variants",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Variants: implementation variants of a feature or bug fix on a browser page, with diffs, combining, and a chat with Claude that keeps token use low",
   "author": {
     "name": "jabenb"
