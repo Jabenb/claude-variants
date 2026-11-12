@@ -1,0 +1,14 @@
+{
+  "name": "claude-variants",
+  "owner": {
+    "name": "jabenb"
+  },
+  "plugins": [
+    {
+      "name": "variants",
+      "source": "./",
+      "description": "Variants: implementation variants on a browser page, with diffs, combining and a chat with Claude"
+    }
+  ],
+  "allowCrossMarketplaceDependenciesOn": ["claude-webhub"]
+}
